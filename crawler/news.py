@@ -1,11 +1,11 @@
 import json
-import time
+import os
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
 TIME_PATTERN = '%Y/%m/%d %H:%M:%S'
-MAX_NEWS = 100
+MAX_NEWS = 10_000
 
 class News:
     def __init__(self, title, info, content, editor, topic, time) -> None:
@@ -33,9 +33,9 @@ class NewsCrawler:
         
     @staticmethod
     def parse_time(time_soup: BeautifulSoup) -> datetime:
-        year = time_soup.find('span', class_='year').text
-        day = time_soup.find('span', class_='day').text
-        time = time_soup.find('span', class_='time').text
+        year = time_soup.find('span', class_='year').text.strip()
+        day = time_soup.find('span', class_='day').text.strip().replace(' ', '')
+        time = time_soup.find('span', class_='time').text.strip()
         return datetime.strptime(f'{year}/{day} {time}', TIME_PATTERN)
         
     def get_urls(self) -> set[str]:
@@ -65,24 +65,41 @@ class NewsCrawler:
         response = requests.get(url)
         topic = url.split('/')[3]
         soup = BeautifulSoup(response.text, 'html.parser')
-        title = soup.find('span', class_='title').text.strip()
-        info = soup.find('span', class_='info')
-        info = info.text.strip() if info else ''
         detail = soup.find('div', id='detail')
         paragraphs = detail.find_all('p')
         content = '\n'.join([p.text.strip() for p in paragraphs])
-        editor = soup.find('span', class_='editor').text.strip()
-        time = self.parse_time(soup.find('div', class_='header-time left'))
-        news = News(title, info, content, editor, topic, datetime.strftime(time, TIME_PATTERN))
+        title = soup.find('span', class_='title')
+        title = title.text.strip() if title else None
+        info = soup.find('span', class_='info')
+        info = info.text.strip() if info else None
+        editor = soup.find('span', class_='editor')
+        editor = editor.text.strip() if editor else None
+        time = soup.find('div', class_='header-time left')
+        time = datetime.strftime(self.parse_time(time), TIME_PATTERN) if time else None
+        news = News(title, info, content, editor, topic, time)
         self.data.append(news)
         return news
     
-    def save_data(self, filename: str) -> None:
-        with open(filename, 'w', encoding='utf-8') as f:
+    def save_data(self, foldername: str) -> None:
+        urls_path = os.path.join(foldername, 'urls.json')
+        data_path = os.path.join(foldername, 'data.json')
+        with open(urls_path, 'w', encoding='utf-8') as f:
+            json.dump(list(self.urls), f, ensure_ascii=False, indent=4)
+        with open(data_path, 'w', encoding='utf-8') as f:
             json.dump([news.__dict__ for news in self.data],
                       f, ensure_ascii=False, indent=4)
             
-    def load_data(self, filename: str) -> None:
-        with open(filename, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            self.data = [News(**news) for news in data]
+    def load_data(self, foldername: str) -> None:
+        urls_path = os.path.join(foldername, 'urls.json')
+        data_path = os.path.join(foldername, 'data.json')
+        try:
+            with open(urls_path, 'r', encoding='utf-8') as f:
+                self.urls = set(json.load(f))
+        except Exception as e:
+            print(f"Failed to load urls: {e}")
+        try:
+            with open(data_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self.data = [News(**news) for news in data]
+        except Exception as e:
+            print(f"Failed to load data: {e}")
