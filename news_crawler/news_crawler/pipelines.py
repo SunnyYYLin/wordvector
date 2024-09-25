@@ -15,7 +15,6 @@ class NewsPipeline:
             os.makedirs(self.output_dir)
         
         self.file = open(os.path.join(self.output_dir, 'data.json'), 'w', encoding='utf-8')
-        self.cache = open('cache.json', 'w', encoding='utf-8')  # cache.json 保持在当前目录
         self.news_list = []
 
     @classmethod

@@ -50,7 +50,7 @@ class NewsSpider(scrapy.Spider):
     def start_requests(self):
         # 使用初始关键词 '1' 开始爬取
         keyword = self.start_keyword
-        for page in random.choices(range(1, self.max_pages+1), k=20):
+        for page in range(1, self.max_pages+1):
             yield from self.search(page, keyword)
             
     def search(self, page, keyword):
@@ -84,7 +84,7 @@ class NewsSpider(scrapy.Spider):
                 self.visited_urls.add(url)
                 title = re.sub(r'<.*?>', '', news.get('title', ''))
                 item = NewsItem()
-                item['title'] = title.replace('&nbsp', ' ').split(';')[0].strip()
+                item['title'] = title.replace('&nbsp', ' ').strip()
                 item['time'] = news.get('pubtime')
                 item['site'] = news.get('sitename')
                 item['url'] = url
@@ -99,7 +99,7 @@ class NewsSpider(scrapy.Spider):
                     keyword = self.gen_keyword(title)
                 else:
                     self.logger.warning("No item found to extract keyword from.")
-                for page in random.choices(range(1, self.max_pages+1), k=20):
+                for page in range(1, self.max_pages+1):
                     yield from self.search(page, keyword)
                     
         except Exception as e:
