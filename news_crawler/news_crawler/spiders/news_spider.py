@@ -75,7 +75,7 @@ class NewsSpider(scrapy.Spider):
             data = json.loads(response.text)
             news_list = data.get('content', {}).get('results', [])
             if not news_list:
-                self.logger.info(f"No news found for keyword '{keyword}' on page {page}.")
+                self.logger.warning(f"No news found for keyword '{keyword}' on page {page}.")
                 return
             for news in news_list:
                 url = news.get('url')
@@ -84,7 +84,7 @@ class NewsSpider(scrapy.Spider):
                 self.visited_urls.add(url)
                 title = re.sub(r'<.*?>', '', news.get('title', ''))
                 item = NewsItem()
-                item['title'] = title.replace('&nbsp', ' ').strip()
+                item['title'] = title.replace('&nbsp', ' ').replace(';', '').strip()
                 item['time'] = news.get('pubtime')
                 item['site'] = news.get('sitename')
                 item['url'] = url
