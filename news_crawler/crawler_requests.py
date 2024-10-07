@@ -11,11 +11,19 @@ import re
 TIME_PATTERN = '%Y-%m-%d %H:%M:%S'
 SEARCH_PATTERN = 'https://so.news.cn/getNews?lang={lang}&curPage={page}&\
 searchFields={only_title}&sortField={by_relativity}&keyword={keyword}'
-LANGUAGE = 'cn'
-MAX_NEWS = 100
-MAX_PAGES = 50
+MAX_PAGES = 20
 
 class News:
+    """News类，用于存储新闻的相关信息。
+
+    Attrs:
+        title (str): 新闻标题。
+        content (str): 新闻内容。
+        editor (str): 编辑者。
+        site (str): 新闻来源网站。
+        time (str): 新闻发布时间。
+        url (str): 新闻链接。
+    """
     def __init__(self, *, title=None, content=None, editor=None, site=None, time=None, url=None) -> None:
         self.title = title
         self.content = content
@@ -25,13 +33,41 @@ class News:
         self.url = url
 
 class NewsCrawler:
-    def __init__(self) -> None:
+    """NewsCrawler类用于抓取新闻数据。
+    Attrs:
+        to_visit (Queue[News]): 待访问的新闻队列。
+        data (list[News]): 已抓取的新闻数据列表。
+        visited_urls (set[str]): 已访问的新闻URL集合。
+        language (str): 抓取新闻的语言。
+        max_news (int): 最大抓取新闻数量。
+        init_keyword (str): 初始搜索关键词。
+    Methods:
+        __init__(self, language, max_news, init_keyword='1'):初始化NewsCrawler实例。
+        crawl(self):
+            开始抓取新闻数据。
+        search(self, keyword: str):
+            根据关键词搜索新闻。
+        parse_search(self, response: requests.Response) -> list[str]|None:
+            解析搜索结果，返回新闻列表。
+        is_news(soup: BeautifulSoup) -> bool:
+            判断页面内容是否为新闻。
+        get_news(self, soup: BeautifulSoup, news: News) -> News:
+            从页面内容中提取新闻详细信息。
+        save_data(self, foldername: str) -> None:
+            将抓取的数据保存到指定文件夹。
+        load_data(self, foldername: str) -> None:
+            从指定文件夹加载已保存的数据。
+    """
+    def __init__(self, language, max_news, init_keyword='1') -> None:
         self.to_visit: Queue[News] = Queue()
         self.data: list[News] = []
         self.visited_urls: set[str] = set()
+        self.language = language
+        self.max_news = max_news
+        self.init_keyword = init_keyword
         
     def crawl(self):
-        self.search('1')
+        self.search(self.init_keyword)
         while True:
             news = self.to_visit.get()
             try:
@@ -43,7 +79,7 @@ class NewsCrawler:
                 while self.to_visit.empty():
                     keyword = random.choice(jieba.lcut(news.title))
                     self.search(keyword)
-                if len(self.data) >= MAX_NEWS:
+                if len(self.data) >= self.max_news:
                     break
             except TimeoutError as e:
                 print(f"Timeout: {e} News: {news['title']}")
@@ -51,7 +87,7 @@ class NewsCrawler:
     def search(self, keyword: str):
         page = 1
         while page < MAX_PAGES:
-            response = requests.get(SEARCH_PATTERN.format(lang=LANGUAGE, 
+            response = requests.get(SEARCH_PATTERN.format(lang=self.language, 
                                                           page=page,
                                                           only_title='title',
                                                           by_relativity='relativity',

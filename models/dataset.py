@@ -4,35 +4,50 @@ import math
 from itertools import product
 import torch
 from tqdm import tqdm
+from .vocab import Vocabulary
 
 START = '<START>'
 END = '<END>'
 UNK = '<UNK>'
 
 class CBOWPairs:
+    """CBOWPairs 类用于存储和处理连续词袋模型（CBOW）中的训练数据对。
+    参数:
+        bags (tuple[tuple[int]]): 词袋的索引元组。
+        tags (tuple[int]): 中心词的索引元组。
+        negatives (tuple[tuple[int]]): 负采样词的索引元组。
+    属性:
+        bags (torch.Tensor): 转换为长整型的词袋张量。
+        tags (torch.Tensor): 转换为长整型的标签张量。
+        negatives (torch.Tensor): 转换为长整型的负采样词张量。
+    方法:
+        __len__() -> int: 返回目标词的数量。
+        __str__() -> str: 返回 CBOWPairs 对象的字符串表示。
+        to(device) -> CBOWPairs: 将所有张量移动到指定设备，并返回自身。
+    """
     def __init__(self, 
                  bags: tuple[tuple[int]], 
-                 targets: tuple[int], 
+                 tags: tuple[int], 
                  negatives: tuple[tuple[int]]) -> None:
         self.bags = torch.Tensor(bags).long()
-        self.targets = torch.Tensor(targets).long()
+        self.tags = torch.Tensor(tags).long()
         self.negatives = torch.Tensor(negatives).long()
-        assert len(bags) == len(targets) == len(negatives), \
-            'Batch size of bags, targets and negatives should be the same'
+        assert len(bags) == len(tags) == len(negatives), \
+            'Batch size of bags, tags and negatives should be the same'
     
     def __len__(self) -> int:
-        return len(self.targets)
+        return len(self.tags)
     
     def __str__(self) -> str:
         return f"""CBOWPairs(
     bags: {self.bags},
-    targets: {self.targets},
+    tags: {self.tags},
     negatives: {self.negatives}
 )"""
 
     def to(self, device):
         self.bags = self.bags.to(device)
-        self.targets = self.targets.to(device)
+        self.tags = self.tags.to(device)
         self.negatives = self.negatives.to(device)
         return self
 
@@ -46,24 +61,14 @@ class CBOWDataSet:
         
         # data
         self.sentences: list[list[int]] = []  # [[idx1, idx2, ...], ...]
-        self.vocab: list[str] = []  # [word1, word2, ...]
-        self.freq: list[int] = []  # [freq1, freq2, ...]
-        self.word2idx: dict[str, int] = {} # {word: idx, ...}
         self.coords: list[tuple[int]] = []  # [(idx_s, idx_w), ...]
-        
-        # threshold_mode: 'min_count' or 'max_vocab'
-        if min_count:
-            self.min_count = min_count
-            self.threshold_mode = 'min_count'
-        elif max_vocab:
-            self.max_vocab = max_vocab
-            self.threshold_mode = 'max_vocab'
-        else:
-            self.threshold_mode = None
         
         # tokenized.txt
         if self.input_file.endswith('.txt'):
             self._process_data()
+            self.vocab = Vocabulary(self.sentences2words(self.sentences), min_count, max_vocab)
+            self.vocab_size = len(self.vocab)
+            self._to_indices()
         # dataset.json
         elif self.input_file.endswith('.json'):
             self._load_data()
@@ -83,80 +88,46 @@ class CBOWDataSet:
                 self.sentences.append(line)
         
         self._padding_sentence()
-        self._init_vocab()
         
     def save(self, output_file: str):
         with open(output_file, 'w') as f:
             json.dump({
                 'window_size': self.window_size,
-                'vocab': self.vocab,
-                'freq': self.freq,
-                'word2idx': self.word2idx,
-                'sentences': self.sentences
+                'sentences': self.sentences,
+                'vocab_size': self.vocab_size
             }, f)
             
     def _load_data(self):
         with open(self.input_file, 'r') as f:
             data = json.load(f)
-            self.sentences = data['sentences']
-            self.vocab = data['vocab']
-            self.freq = data['freq']
-            self.word2idx = data['word2idx']
             self.window_size = data['window_size']
+            self.sentences = data['sentences']
+            self.vocab_size = data['vocab_size']
             
     def _padding_sentence(self):
-        padding = self.window_size // 2
-        head = [START] * padding
-        tail = [END] * padding
+        head = [START] * self.window_size
+        tail = [END] * self.window_size
         self.sentences = [head + sentence + tail for sentence in self.sentences]
-            
-    def _init_vocab(self):
-        words = [word for sentence in self.sentences for word in sentence]
-        word2freq = {}
-        for word in tqdm(words, desc='Counting word frequency'):
-            word2freq[word] = word2freq.get(word, 0) + 1
-        print('Sorting word frequency...')
-        word_freq = sorted(word2freq.items(), key=lambda x: x[1], reverse=True)
         
-        print('Removing low frequency words...')
-        match self.threshold_mode:
-            case 'min_count':
-                low_freq_count = sum([freq for word, freq in word_freq if freq < self.min_count])
-                word_freq = [(word, freq) for word, freq in word_freq if freq >= self.min_count]
-                word_freq.append((UNK, low_freq_count))
-            case 'max_vocab':
-                low_freq_count = sum([freq for word, freq in word_freq[self.max_vocab-1:]])
-                word_freq = word_freq[:self.max_vocab-1]
-                word_freq.append((UNK, low_freq_count))
-            case _:
-                pass
+    def _to_indices(self):
+        self.sentences = [self.vocab[sentence] for sentence in tqdm(self.sentences, desc='Converting sentences to indices')]
         
-        print('Building vocabulary...')
-        self.vocab = [word for word, freq in word_freq]
-        self.word2idx = {word: idx for idx, word in enumerate(self.vocab)}
-        self.freq = [freq for word, freq in word_freq]
-        
-        idx_sentences = []
-        for sentence in tqdm(self.sentences, desc='Converting sentences to indices'):
-            idx_sentences.append([self.word2idx.get(word, self.word2idx[UNK]) for word in sentence])
-        self.sentences = idx_sentences
+    @staticmethod
+    def sentences2words(sentences: list[list[str]]) -> list[str]:
+        return [word for sentence in sentences for word in sentence]
         
     def generate_coords(self):
         for idx_s, sentence in enumerate(tqdm(self.sentences, desc='Generating coordinates')):
-            for idx_w in range(self.window_size//2, len(sentence)-self.window_size//2):
+            for idx_w in range(self.window_size, len(sentence)-self.window_size):
                 self.coords.append((idx_s, idx_w))
                 
     def partition(self,
                 batch_size:int,
-                ratio:tuple[float]=(0.8, 0.1, 0.1), 
+                ratio:float=0.9, 
                 shuffle:bool=True,
                 neg_size:int=5) -> tuple['CBOWDataLoader']:
-        assert math.isclose(sum(ratio), 1), 'Sum of ratio should be 1'
-        assert len(ratio) == 3, 'Length of ratio should be 3'
         total = len(self)
-        train_size = int(total * ratio[0])
-        valid_size = int(total * ratio[1])
-        test_size = total - train_size - valid_size
+        train_size = math.ceil(total * ratio)
         
         coords = self.coords.copy()
         if shuffle:
@@ -164,15 +135,28 @@ class CBOWDataSet:
             random.shuffle(coords)
         print('Partitioning dataset...')
         train_coords = coords[:train_size]
-        valid_coords = coords[train_size:train_size+valid_size]
-        test_coords = coords[train_size+valid_size:]
+        test_coords = coords[train_size:]
         return (
             CBOWDataLoader(self, train_coords, batch_size, neg_size),
-            CBOWDataLoader(self, valid_coords, batch_size, neg_size),
             CBOWDataLoader(self, test_coords, batch_size, neg_size)
         )
         
 class CBOWDataLoader:
+    """
+    CBOWDataLoader 类用于加载连续词袋（CBOW）模型的数据。
+    参数:
+        dataset (CBOWDataSet): 包含训练数据的 CBOW 数据集。
+        coords (list[tuple[int]]): 数据集中的坐标列表，每个坐标表示一个目标词的位置。
+        batch_size (int): 每个批次的大小。
+        neg_size (int): 每个目标词的负采样数量。
+    方法:
+        __len__() -> int:
+            返回数据集的批次数量。
+        __iter__():
+            迭代器方法，生成包含目标词、上下文词袋和负采样词的批次。
+        _get_negatives(tag) -> tuple[int]:
+            根据目标词生成负采样词。
+    """
     def __init__(self,
                  dataset: CBOWDataSet,
                  coords: list[tuple[int]],
@@ -187,27 +171,43 @@ class CBOWDataLoader:
         return len(self.coords) // self.batch_size
 
     def __iter__(self):
-        targets, bags, negatives = [], [], []
-        padding = self.dataset.window_size // 2
+        tags, bags, negatives = [], [], []
+        padding = self.dataset.window_size
         for coord in self.coords:
-            target = self.dataset.sentences[coord[0]][coord[1]]
+            tag = self.dataset.sentences[coord[0]][coord[1]]
             bag = self.dataset.sentences[coord[0]][coord[1]-padding:coord[1]] + \
                   self.dataset.sentences[coord[0]][coord[1]+1:coord[1]+padding+1]
-            negative = self._get_negatives(target)
-            targets.append(target)
+            negative = self._get_negatives(tag)
+            tags.append(tag)
             bags.append(tuple(bag))
             negatives.append(negative)
-            if len(targets) == self.batch_size:
-                yield CBOWPairs(bags, targets, negatives)
-                targets, bags, negatives = [], [], []
+            if len(tags) == self.batch_size:
+                yield CBOWPairs(bags, tags, negatives)
+                tags, bags, negatives = [], [], []
             
-    def _get_negatives(self, target) -> tuple[int]:
+    def _get_negatives(self, tag) -> tuple[int]:
         negatives = []
         while len(negatives) < self.neg_size:
-            negative = random.randint(0, len(self.dataset.vocab)-1)
-            if negative != target:
+            negative = random.randint(0, self.dataset.vocab_size-1)
+            if negative != tag:
                 negatives.append(negative)
         return tuple(negatives)
+    
+    def partition(self, ratio: float, shuffle: bool=True) -> tuple["CBOWDataLoader"]:
+        total = len(self.coords)
+        train_size = math.ceil(total * ratio)
+        
+        coords = self.coords.copy()
+        if shuffle:
+            print('Shuffling coordinates...')
+            random.shuffle(coords)
+        train_coords = coords[:train_size]
+        test_coords = coords[train_size:]
+        return (
+            CBOWDataLoader(self.dataset, train_coords, self.batch_size, self.neg_size),
+            CBOWDataLoader(self.dataset, test_coords, self.batch_size, self.neg_size)
+        )
+        
         
 if __name__ == '__main__':
     dataset = CBOWDataSet('data/cn/dataset.json')
