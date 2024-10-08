@@ -14,6 +14,7 @@ class NewsPipeline:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         
+        self.cache = open(os.path.join(self.output_dir, 'data_cache.json'), 'w', encoding='utf-8')
         self.file = open(os.path.join(self.output_dir, 'data.json'), 'w', encoding='utf-8')
         self.news_list = []
 

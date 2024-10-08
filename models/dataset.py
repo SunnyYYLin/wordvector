@@ -52,6 +52,37 @@ class CBOWPairs:
         return self
 
 class CBOWDataSet:
+    """
+    CBOWDataSet类用于处理连续词袋（CBOW）模型的数据集。
+    属性:
+        input_file (str): 输入文件路径。
+        window_size (int|None): 窗口大小。
+        sentences (list[list[int]]): 句子列表，每个句子是单词索引的列表。
+        coords (list[tuple[int]]): 坐标列表，每个坐标是一个元组，包含句子索引和单词索引。
+        vocab (Vocabulary): 词汇表对象。
+        vocab_size (int): 词汇表大小。
+    方法:
+        __init__(input_file: str, window_size: int|None=None, min_count: int|None=None, max_vocab: int|None=None) -> None:
+            初始化CBOWDataSet对象。
+        __len__() -> int:
+            返回数据集的长度。
+        _process_data():
+            处理输入文件中的数据，将其转换为句子列表。
+        save(output_file: str):
+            将数据集保存到指定的输出文件。
+        _load_data():
+            从JSON文件加载数据集。
+        _padding_sentence():
+            对句子进行填充，使其长度一致。
+        _to_indices():
+            将句子中的单词转换为对应的索引。
+        sentences2words(sentences: list[list[str]]) -> list[str]:
+            将句子列表转换为单词列表。
+        generate_coords():
+            生成坐标列表，用于CBOW模型的训练。
+        partition(batch_size: int, ratio: float=0.9, shuffle: bool=True, neg_size: int=5) -> tuple['CBOWDataLoader']:
+            将数据集划分为训练集和测试集。
+    """
     def __init__(self, input_file: str, 
                  window_size: int|None=None, 
                  min_count: int|None=None, 

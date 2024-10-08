@@ -3,26 +3,65 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CBOW(nn.Module):
-    """Continuous Bag of Words (CBOW) model for word embeddings.
-    This model learns word embeddings by predicting a tag word from a bag of context words.
-        vocab_size (int): Size of the vocabulary.
-        emb_dim (int): Dimensionality of the embeddings.
-        shared_embeddings (bool, optional): If True, the embeddings for the context and tag words are shared. Default is False.
-    Methods:
-        average(bags: torch.Tensor) -> torch.Tensor:
-            Computes the average embedding for a batch of bags of context words.
-        forward(bags: torch.Tensor) -> torch.Tensor:
-            Computes the probability distribution over the vocabulary for a batch of bags of context words.
-        predict(bags: torch.Tensor) -> torch.Tensor:
-            Predicts the most likely tag word for a batch of bags of context words.
-        loss(pair, use_logsigmoid=True) -> torch.Tensor:
-            Computes the loss for a batch of (context, tag, negative) triplets.
-        _pos_loss(avg: torch.Tensor, tags: torch.Tensor, use_logsigmoid=True) -> torch.Tensor:
-            Computes the positive loss for a batch of tag words.
-        _neg_loss(avg: torch.Tensor, negatives: torch.Tensor, use_logsigmoid=True) -> torch.Tensor:
-            Computes the negative loss for a batch of negative samples.
-        nearest(word: torch.Tensor, k=10) -> list[torch.Tensor]:
-            Finds the k nearest words to the given word in the embedding space.
+    """CBOW 类实现了连续词袋模型，用于词向量的训练和预测。
+    方法:
+        __init__(self, vocab_size, emb_dim, shared_embeddings=False):
+            初始化 CBOW 模型。
+            参数:
+                vocab_size (int): 词汇表的大小。
+                emb_dim (int): 词向量的维度。
+                shared_embeddings (bool, 可选): 是否共享输入和输出的词向量。默认为 False。
+        average(self, bags: torch.Tensor) -> torch.Tensor:
+            计算每个词袋的平均词向量。
+            参数:
+                bags (torch.Tensor): 形状为 (batch_size, 2*window_size) 的张量，包含每个词袋中的词索引。
+            返回:
+                torch.Tensor: 形状为 (batch_size, emb_dim) 的张量，包含每个词袋的平均词向量。
+        forward(self, bags: torch.Tensor) -> torch.Tensor:
+            执行 CBOW 模型的前向传播。
+            参数:
+                bags (torch.Tensor): 形状为 (batch_size, 2*window_size) 的张量，包含每个词袋中的词索引。
+            返回:
+                torch.Tensor: 形状为 (batch_size, vocab_size) 的张量，包含词汇表的概率分布。
+        predict(self, bags: torch.Tensor) -> torch.Tensor:
+            预测给定词袋的类别标签。
+            参数:
+                bags (torch.Tensor): 形状为 (batch_size, 2*window_size) 的张量，包含每个词袋中的词索引。
+            返回:
+                torch.Tensor: 形状为 (batch_size,) 的张量，包含预测的类别标签。
+        loss(self, pair, use_logsigmoid=True) -> torch.Tensor:
+            计算给定词袋、标签和负样本的损失。
+            参数:
+                pair (object): 包含以下属性的对象:
+                    - bags (torch.Tensor): 形状为 (batch_size, 2*window_size, emb_dim) 的张量，表示上下文词向量。
+                    - tags (torch.Tensor): 形状为 (batch_size, emb_dim) 的张量，表示标签词向量。
+                    - negatives (torch.Tensor): 形状为 (batch_size, neg_size, emb_dim) 的张量，表示负样本词向量。
+                use_logsigmoid (bool, 可选): 是否使用对数 Sigmoid 函数计算损失。默认为 True。
+            返回:
+                torch.Tensor: 表示平均损失的标量张量。
+        _pos_loss(self, avg: torch.Tensor, tags: torch.Tensor, use_logsigmoid=True) -> torch.Tensor:
+            计算正样本的损失。
+            参数:
+                avg (torch.Tensor): 形状为 (batch_size, emb_dim) 的张量，表示平均词向量。
+                tags (torch.Tensor): 形状为 (batch_size, emb_dim) 的张量，表示标签词向量。
+                use_logsigmoid (bool, 可选): 是否使用对数 Sigmoid 函数计算损失。默认为 True。
+            返回:
+                torch.Tensor: 形状为 (batch_size) 的张量，表示正样本的损失。
+        _neg_loss(self, avg: torch.Tensor, negatives: torch.Tensor, use_logsigmoid=True) -> torch.Tensor:
+            计算负样本的损失。
+            参数:
+                avg (torch.Tensor): 形状为 (batch_size, emb_dim) 的张量，表示平均词向量。
+                negatives (torch.Tensor): 形状为 (batch_size, num_negatives, emb_dim) 的张量，表示负样本词向量。
+                use_logsigmoid (bool, 可选): 是否使用对数 Sigmoid 函数计算损失。默认为 True。
+            返回:
+                torch.Tensor: 形状为 (batch_size) 的张量，表示负样本的损失。
+        nearest(self, word_idx: int, k=10) -> list[int]:
+            基于余弦相似度找到给定词索引的最近邻词。
+            参数:
+                word_idx (int): 要查找最近邻的词索引。
+                k (int, 可选): 要返回的最近邻词的数量。默认为 10。
+            返回:
+                list[int]: 包含 k 个最近邻词索引的列表。
     """
     def __init__(self, vocab_size, emb_dim, shared_embeddings=False):
         """
@@ -33,6 +72,7 @@ class CBOW(nn.Module):
         if shared_embeddings:
             self.bag_emb.weight = self.tag_emb.weight
         self.emb_dim = emb_dim
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def average(self, bags: torch.Tensor) -> torch.Tensor:
         """
@@ -103,7 +143,7 @@ class CBOW(nn.Module):
         if use_logsigmoid:
             neg_loss = -F.logsigmoid(-neg_loss.sum(dim=1))  # (batch_size)
         else:
-            neg_loss = torch.exp(-neg_loss).sum(dim=1).log() # 直接计算
+            neg_loss = neg_loss.exp().sum(dim=1).log()
         return neg_loss
     
     def nearest(self, word_idx: int, k=10) -> list[int]:
@@ -115,7 +155,35 @@ class CBOW(nn.Module):
         Returns:
             list[int]: A list of indices of the k nearest words.
         """
-        word_emb = self.tag_emb(torch.Tensor(word_idx)).squeeze() # (emb_dim)
+        word_emb = self.tag_emb(torch.tensor([word_idx], dtype=torch.long).to(self.device)).squeeze() # (emb_dim)
         distances = F.cosine_similarity(word_emb.unsqueeze(0), self.tag_emb.weight, dim=1)
         _, indices = distances.topk(k+1)
         return indices[1:].tolist()
+    
+    def save(self, path: str) -> None:
+        """
+        Save the model to the given path.
+        Args:
+            path (str): The path to save the model.
+        """
+        checkpoint = {
+            'vocab_size': self.tag_emb.num_embeddings,
+            'emb_dim': self.tag_emb.embedding_dim,
+            'shared_embeddings': self.bag_emb.weight is self.tag_emb.weight,
+            'state_dict': self.state_dict()
+        }
+        torch.save(checkpoint, path)
+        
+    @classmethod
+    def load(cls, path: str) -> 'CBOW':
+        """
+        Load the model from the given path.
+        Args:
+            path (str): The path to load the model from.
+        Returns:
+            CBOW: The loaded CBOW model.
+        """
+        checkpoint = torch.load(path)
+        model = cls(checkpoint['vocab_size'], checkpoint['emb_dim'], checkpoint['shared_embeddings'])
+        model.load_state_dict(checkpoint['state_dict'])
+        return model

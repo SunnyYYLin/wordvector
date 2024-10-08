@@ -7,6 +7,29 @@ import json
 UNK = '<UNK>'  # Special token for unknown words
 
 class Vocabulary:
+    """Vocabulary类用于构建和管理词汇表。
+    属性:
+        vocab (list[str]): 词汇表中的单词列表。
+        word2idx (dict[str, int]): 从单词到索引的映射。
+        freq (list[int]): 词汇表中每个单词的频率。
+    方法:
+        __init__(words: list[str], min_count: Optional[int] = None, max_vocab: Optional[int] = None) -> None:
+            初始化Vocabulary对象，并根据给定的单词列表和阈值参数构建词汇表。
+        _threshold_mode(min_count: Optional[int] = None, max_vocab: Optional[int] = None) -> None:
+            设置词汇表的阈值模式，只能提供min_count或max_vocab中的一个。
+        _build(words: list[str]) -> None:
+            根据给定的单词列表和阈值参数构建词汇表。
+        __len__() -> int:
+            返回词汇表的大小。
+        __getitem__(key: Any) -> Any:
+            根据键的类型检索项目。
+        frequency(word: str) -> int:
+            返回词汇表中某个单词的频率。
+        save(output_file: str) -> None:
+            将词汇表保存到指定的文件中。
+        load(path: str) -> 'Vocabulary':
+            从指定的文件中加载词汇表。
+    """
     def __init__(
         self,
         words: list[str],

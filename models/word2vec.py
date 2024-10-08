@@ -7,6 +7,17 @@ from .dataset import CBOWDataLoader
 from .vocab import Vocabulary
 
 class Word2Vec:
+    """Word2Vec 类用于训练和使用词向量模型。
+    方法:
+        __init__(model: CBOW, vocab: Vocabulary) -> None:
+            初始化 Word2Vec 类。
+        train(loader: CBOWDataLoader, epochs=10, lr=0.001, device='cuda', train_ratio=0.9, log_dir='./logs'):
+            训练词向量模型。
+        test(loader: CBOWDataLoader, device='cuda' if torch.cuda.is_available() else 'cpu'):
+            测试词向量模型。
+        nearest(word: str) -> list[str]:
+            查找与给定词最相近的词。
+    """
     def __init__(self, model: CBOW, vocab: Vocabulary) -> None:
         self.model = model
         self.vocab = vocab
@@ -17,7 +28,8 @@ class Word2Vec:
             lr=0.001,
             device='cuda' if torch.cuda.is_available() else 'cpu',
             train_ratio=0.9,
-            log_dir='./logs'):
+            log_dir='./logs',
+            use_logsigmoid=True):
 
         writer = SummaryWriter(log_dir)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
@@ -31,7 +43,7 @@ class Word2Vec:
                 pair = pair.to(device)
                 optimizer.zero_grad()
 
-                loss = self.model.loss(pair)
+                loss = self.model.loss(pair, use_logsigmoid=use_logsigmoid)
                 loss.backward()
                 optimizer.step()
 
@@ -83,16 +95,23 @@ class Word2Vec:
         return avg_accuracy
     
     @staticmethod
-    def load(path: str) -> 'Word2Vec':
-        model = torch.load(os.path.join(path, 'model.pth'))
+    def load(path: str, 
+             device='cuda' if torch.cuda.is_available() else 'cpu') -> 'Word2Vec':
         vocab = Vocabulary.load(os.path.join(path, 'vocab.pth'))
+        model = CBOW.load(os.path.join(path, 'model.pth'))
+        model.to(device)
         return Word2Vec(model, vocab)
     
     def save(self, path: str) -> None:
-        torch.save(self.model.state_dict(), os.path.join(path, 'model.pth'))
+        os.makedirs(path, exist_ok=True)
+        self.model.save(os.path.join(path, 'model.pth'))
         self.vocab.save(os.path.join(path, 'vocab.pth'))
         
     def nearest(self, word: str) -> list[str]:
         idx = self.vocab[word]
         neighbor_idx = self.model.nearest(idx)
         return self.vocab[neighbor_idx]
+    
+    def sim(self, word1: str, word2: str) -> float:
+        idx1, idx2 = self.vocab[word1], self.vocab[word2]
+        sim = self.model.bag_emb.weight[idx1] @ self.model.tag_emb.weight[idx2]
