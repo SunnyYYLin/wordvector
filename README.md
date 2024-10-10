@@ -32,7 +32,7 @@
 │   ├── dataset.py               # 数据集加载与处理
 │   ├── vocab.py                 # 词汇表管理
 │   └── word2vec.py              # Word2Vec模型及其训练方法
-├── news_crawler                 # 新闻爬虫相关代码
+├── xinhua_crawler                 # 新闻爬虫相关代码
 │   ├── crawler_requests.py      # 基于requests的爬虫实现
 │   ├── news_crawler             # 基于Scrapy的爬虫实现
 │   │   ├── items.py
