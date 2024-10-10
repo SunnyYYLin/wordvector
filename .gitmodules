@@ -1,0 +1,3 @@
+[submodule "xinhua-crawler"]
+	path = xinhua-crawler
+	url = https://github.com/SunnyYYLin/xinhua-crawler.git
